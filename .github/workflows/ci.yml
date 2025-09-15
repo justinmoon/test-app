@@ -43,9 +43,43 @@ jobs:
           echo "Building and updating nix profile..."
           export GIT_COMMIT=$(git rev-parse --short HEAD)
           echo "Building version: $GIT_COMMIT"
-          nix build .#test-app
-          nix profile remove test-app 2>/dev/null || true
-          nix profile install .#test-app
+          
+          # Debug: Check current profile before changes
+          echo "=== Current nix profile before update ==="
+          nix profile list | grep test-app || echo "No test-app in profile"
+          
+          # Build the package
+          echo "=== Building package ==="
+          nix build .#test-app --print-out-paths
+          STORE_PATH=$(readlink -f result)
+          echo "Built store path: $STORE_PATH"
+          
+          # Try to upgrade or install
+          echo "=== Attempting profile update ==="
+          if nix profile list | grep -q "test-app"; then
+            echo "test-app exists in profile, attempting upgrade..."
+            nix profile upgrade test-app || {
+              echo "Upgrade failed, removing and reinstalling..."
+              nix profile remove test-app
+              nix profile install .#test-app
+            }
+          else
+            echo "test-app not in profile, installing..."
+            nix profile install .#test-app
+          fi
+          
+          # Debug: Check profile after changes
+          echo "=== Nix profile after update ==="
+          nix profile list | grep test-app || echo "No test-app in profile"
+          
+          # Debug: Check what binary is actually being used
+          echo "=== Which test-app is in PATH ==="
+          which test-app || echo "test-app not in PATH"
+          ls -la $(which test-app) 2>/dev/null || true
+          
+          # Debug: Check systemd service configuration
+          echo "=== Systemd service configuration ==="
+          systemctl cat test-app || true
           
           # Restart using polkit (already working)
           echo "Restarting service using polkit..."
@@ -53,6 +87,10 @@ jobs:
           
           echo "Checking service status..."
           systemctl status test-app --no-pager || true
+          
+          # Debug: Check what's actually running
+          echo "=== Process info ==="
+          ps aux | grep test-app | grep -v grep || true
           
           echo "Testing endpoint..."
           sleep 2
