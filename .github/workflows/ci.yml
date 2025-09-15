@@ -39,7 +39,7 @@ jobs:
           echo "Syncing to build directory..."
           rm -rf "$BUILD_DIR"/*
           rm -rf "$BUILD_DIR"/.??* 2>/dev/null || true
-          rsync -av --exclude='node_modules' --exclude='result' --exclude='.git/hooks' . "$BUILD_DIR"/
+          rsync -av --exclude='node_modules' --exclude='result' --exclude='.git' . "$BUILD_DIR"/
           cd "$BUILD_DIR"
           
           # Build and install from consistent location
