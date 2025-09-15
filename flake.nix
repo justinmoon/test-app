@@ -28,6 +28,12 @@
             buildPhase = ''
               # Install dependencies
               bun install --frozen-lockfile
+              
+              # Embed version in the source
+              if [ -n "$GIT_COMMIT" ]; then
+                echo "Embedding version: $GIT_COMMIT"
+                sed -i "s/VERSION = process.env.GIT_COMMIT || \"dev\"/VERSION = \"$GIT_COMMIT\"/" src/index.ts
+              fi
             '';
             
             installPhase = ''

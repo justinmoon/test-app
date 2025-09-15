@@ -41,6 +41,8 @@ jobs:
           
           # Build and install from consistent location
           echo "Building and updating nix profile..."
+          export GIT_COMMIT=$(git rev-parse --short HEAD)
+          echo "Building version: $GIT_COMMIT"
           nix build .#test-app
           nix profile remove test-app 2>/dev/null || true
           nix profile install .#test-app

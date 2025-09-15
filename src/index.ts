@@ -1,3 +1,6 @@
+const VERSION = process.env.GIT_COMMIT || "dev";
+const BUILD_TIME = new Date().toISOString();
+
 const server = Bun.serve({
   port: 3001,
   fetch(request) {
@@ -29,15 +32,26 @@ const server = Bun.serve({
             bottom: 20px;
             color: white;
             text-align: center;
+            font-size: 14px;
+          }
+          .version {
+            background: rgba(0,0,0,0.3);
+            padding: 5px 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-family: monospace;
           }
         </style>
       </head>
       <body>
-        <div class="emoji">🚀</div>
+        <div class="emoji">🎯</div>
         <div class="info">
           <p>Test App Running on Port 3001</p>
-          <p>FIXED: Auto-deployed via Polkit!</p>
-          <p>Deployed at: ${new Date().toISOString()}</p>
+          <p>StateDirectory Build Works!</p>
+          <div class="version">
+            Version: ${VERSION}<br>
+            Built: ${BUILD_TIME}
+          </div>
         </div>
       </body>
       </html>`,
