@@ -27,7 +27,15 @@ jobs:
       - name: Deploy to production
         if: success()
         run: |
-          echo "Updating nix profile..."
+          # Use consistent build directory so nix profile upgrade works
+          echo "Syncing to consistent build directory..."
+          rm -rf /build/test-app/*
+          rm -rf /build/test-app/.??* 2>/dev/null || true
+          rsync -av --exclude='.git' --exclude='node_modules' --exclude='result' . /build/test-app/
+          cd /build/test-app
+          
+          echo "Building and updating nix profile..."
+          nix build .#test-app
           nix profile remove test-app 2>/dev/null || true
           nix profile install .#test-app
           
