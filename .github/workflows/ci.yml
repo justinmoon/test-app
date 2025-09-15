@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Build with Nix
+        run: |
+          echo "Building test-app..."
+          nix build .#test-app
+          echo "Store path: $(readlink result)"
+      
+      - name: Deploy to production
+        run: |
+          echo "Updating nix profile..."
+          nix profile remove test-app 2>/dev/null || true
+          nix profile install .#test-app
+          
+          echo "Attempting to restart service using polkit..."
+          # Try without sudo first (using polkit)
+          systemctl restart test-app || {
+            echo "Polkit restart failed, trying with sudo..."
+            sudo systemctl restart test-app || {
+              echo "Both restart methods failed!"
+              echo "Service status:"
+              systemctl status test-app --no-pager || true
+              exit 1
+            }
+          }
+          
+          echo "Service restarted successfully!"
+          echo "Checking service status..."
+          systemctl status test-app --no-pager || true
+          
+          echo "Testing endpoint..."
+          sleep 2
+          curl -s http://localhost:3001 | grep -o "emoji.*</div>" | head -1 || echo "Could not fetch page"
