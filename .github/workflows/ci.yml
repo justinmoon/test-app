@@ -56,8 +56,19 @@ jobs:
           
           # Try to upgrade or install
           echo "=== Attempting profile update ==="
-          if nix profile list | grep -q "test-app"; then
-            echo "test-app exists in profile, attempting upgrade..."
+          
+          # Check if test-app exists and where it's from
+          CURRENT_FLAKE_URL=$(nix profile list | grep "^Name.*test-app" -A3 | grep "Original flake URL:" | cut -d: -f2- | xargs)
+          echo "Current flake URL: '$CURRENT_FLAKE_URL'"
+          echo "Build directory: '$BUILD_DIR'"
+          
+          # If the flake URL doesn't match our build directory, we need to reinstall
+          if [[ "$CURRENT_FLAKE_URL" != "path:$BUILD_DIR" ]] && [[ -n "$CURRENT_FLAKE_URL" ]]; then
+            echo "Profile points to different location ($CURRENT_FLAKE_URL), removing and reinstalling from $BUILD_DIR"
+            nix profile remove test-app
+            nix profile install .#test-app
+          elif nix profile list | grep -q "test-app"; then
+            echo "test-app exists in profile from correct location, attempting upgrade..."
             nix profile upgrade test-app || {
               echo "Upgrade failed, removing and reinstalling..."
               nix profile remove test-app
