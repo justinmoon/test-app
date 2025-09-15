@@ -58,22 +58,24 @@ jobs:
           echo "=== Attempting profile update ==="
           
           # Check if test-app exists and where it's from
-          CURRENT_FLAKE_URL=$(nix profile list | grep -A3 "^Name:.*test-app$" | grep "Original flake URL:" | sed 's/Original flake URL: *//' | xargs)
-          echo "Current flake URL: '$CURRENT_FLAKE_URL'"
-          echo "Expected flake URL: 'path:$BUILD_DIR'"
-          
-          # If the flake URL doesn't match our build directory, we need to reinstall
-          if [[ "$CURRENT_FLAKE_URL" != "path:$BUILD_DIR" ]] && [[ -n "$CURRENT_FLAKE_URL" ]]; then
-            echo "⚠️ Profile points to different location ($CURRENT_FLAKE_URL), removing and reinstalling from $BUILD_DIR"
-            nix profile remove test-app || true
-            nix profile install .#test-app
-          elif nix profile list | grep -q "^Name:.*test-app$"; then
-            echo "test-app exists in profile from correct location, attempting upgrade..."
-            nix profile upgrade test-app || {
-              echo "⚠️ Upgrade failed, removing and reinstalling..."
-              nix profile remove test-app
+          # Note: grep pattern must account for ANSI color codes in nix profile output
+          if nix profile list | grep -E "test-app" > /dev/null; then
+            CURRENT_FLAKE_URL=$(nix profile list | sed 's/\x1b\[[0-9;]*m//g' | grep -A3 "^Name:.*test-app" | grep "Original flake URL:" | sed 's/Original flake URL: *//' | xargs)
+            echo "Current flake URL: '$CURRENT_FLAKE_URL'"
+            echo "Expected flake URL: 'path:$BUILD_DIR'"
+            
+            if [[ "$CURRENT_FLAKE_URL" != "path:$BUILD_DIR" ]]; then
+              echo "⚠️ Profile points to different location ($CURRENT_FLAKE_URL), removing and reinstalling from $BUILD_DIR"
+              nix profile remove test-app || true
               nix profile install .#test-app
-            }
+            else
+              echo "test-app exists in profile from correct location, attempting upgrade..."
+              nix profile upgrade test-app || {
+                echo "⚠️ Upgrade failed, removing and reinstalling..."
+                nix profile remove test-app
+                nix profile install .#test-app
+              }
+            fi
           else
             echo "test-app not in profile, installing fresh..."
             nix profile install .#test-app
@@ -85,8 +87,9 @@ jobs:
           
           # CRITICAL ASSERTION: Verify the profile actually updated
           echo "=== VERIFYING PROFILE UPDATE ==="
-          FINAL_FLAKE_URL=$(nix profile list | grep -A3 "^Name:.*test-app$" | grep "Original flake URL:" | sed 's/Original flake URL: *//' | xargs)
-          FINAL_STORE_PATH=$(nix profile list | grep -A4 "^Name:.*test-app$" | grep "Store paths:" | sed 's/Store paths: *//' | xargs)
+          # Strip ANSI color codes before parsing
+          FINAL_FLAKE_URL=$(nix profile list | sed 's/\x1b\[[0-9;]*m//g' | grep -A3 "^Name:.*test-app" | grep "Original flake URL:" | sed 's/Original flake URL: *//' | xargs)
+          FINAL_STORE_PATH=$(nix profile list | sed 's/\x1b\[[0-9;]*m//g' | grep -A4 "^Name:.*test-app" | grep "Store paths:" | sed 's/Store paths: *//' | xargs)
           
           echo "Final flake URL: '$FINAL_FLAKE_URL'"
           echo "Final store path: '$FINAL_STORE_PATH'"
