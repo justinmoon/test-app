@@ -33,10 +33,10 @@ const server = Bun.serve({
         </style>
       </head>
       <body>
-        <div class="emoji">✨</div>
+        <div class="emoji">🎯</div>
         <div class="info">
           <p>Test App Running on Port 3001</p>
-          <p>Auto-deployed via Polkit!</p>
+          <p>Successfully Auto-deployed via Polkit!</p>
           <p>Deployed at: ${new Date().toISOString()}</p>
         </div>
       </body>
