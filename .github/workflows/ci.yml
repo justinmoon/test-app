@@ -25,11 +25,18 @@ jobs:
           nix profile remove test-app 2>/dev/null || true
           nix profile install .#test-app
           
-          echo "Restarting service with sudo (configured with NOPASSWD)..."
-          sudo systemctl restart test-app
+          echo "Restarting service..."
+          # Try with sudo first (if available and configured)
+          if command -v sudo &> /dev/null; then
+            echo "Using sudo to restart service..."
+            sudo systemctl restart test-app
+          else
+            echo "Sudo not available, trying direct systemctl..."
+            /run/current-system/sw/bin/systemctl restart test-app || systemctl restart test-app
+          fi
           
           echo "Checking service status..."
-          sudo systemctl status test-app --no-pager || true
+          systemctl status test-app --no-pager || true
           
           echo "Testing endpoint..."
           sleep 2
