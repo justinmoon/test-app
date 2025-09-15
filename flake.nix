@@ -26,8 +26,7 @@
             ];
             
             buildPhase = ''
-              # Install dependencies
-              bun install --frozen-lockfile
+              # No dependencies to install - we have a pure build!
               
               # Embed version in the source
               if [ -n "$GIT_COMMIT" ]; then
@@ -40,10 +39,8 @@
               mkdir -p $out/test-app
               mkdir -p $out/bin
               
-              # Copy everything needed to run the app
+              # Copy only the source code (no deps needed!)
               cp -r src $out/test-app/
-              cp package.json $out/test-app/
-              cp bun.lockb $out/test-app/ 2>/dev/null || true
               
               # Create wrapper script that runs with bun
               cat > $out/bin/test-app <<EOF
