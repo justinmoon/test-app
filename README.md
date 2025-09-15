@@ -82,17 +82,17 @@ curl http://slipbox.xyz:3001
 
 ## Solution Approach
 
-The key innovation is using **polkit** instead of sudo to allow the GitHub runner to restart services without hitting the `NoNewPrivileges` restriction.
+**Current Implementation**: Using sudo with NOPASSWD rules configured in NixOS. The restart triggers approach doesn't work because it requires `nixos-rebuild switch` which can't be run from GitHub Actions.
 
-Example polkit rule:
-```javascript
-polkit.addRule(function(action, subject) {
-  if (action.id == "org.freedesktop.systemd1.manage-units" &&
-      action.lookup("unit") == "test-app.service" &&
-      subject.user == "justin") {
-    return polkit.Result.YES;
-  }
-});
+The sudo rules are configured in `github-runner-test-app.nix`:
+```nix
+security.sudo.extraRules = [{
+  users = [ "justin" ];
+  commands = [
+    { command = "${pkgs.systemd}/bin/systemctl restart test-app";
+      options = [ "NOPASSWD" "SETENV" ]; }
+  ];
+}];
 ```
 
 ## Success Criteria
