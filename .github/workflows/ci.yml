@@ -42,6 +42,9 @@ jobs:
           rsync -av --exclude='node_modules' --exclude='result' --exclude='.git' . "$BUILD_DIR"/
           cd "$BUILD_DIR"
           
+          # Touch flake.nix to bust nix cache for upgrades
+          touch flake.nix
+          
           # Build and install from consistent location
           echo "Building and updating nix profile..."
           echo "Building version: $GIT_COMMIT"
