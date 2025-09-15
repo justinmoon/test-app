@@ -27,19 +27,26 @@ jobs:
       - name: Deploy to production
         if: success()
         run: |
-          # Use consistent build directory so nix profile upgrade works
-          echo "Syncing to consistent build directory..."
-          rm -rf /build/test-app/*
-          rm -rf /build/test-app/.??* 2>/dev/null || true
-          rsync -av --exclude='.git' --exclude='node_modules' --exclude='result' . /build/test-app/
-          cd /build/test-app
+          # Use StateDirectory for consistent builds (writable by runner)
+          BUILD_DIR="/var/lib/github-runner/test-app-runner/builds"
+          echo "Using build directory: $BUILD_DIR"
+          mkdir -p "$BUILD_DIR"
           
+          # Clean and sync to build directory
+          echo "Syncing to build directory..."
+          rm -rf "$BUILD_DIR"/*
+          rm -rf "$BUILD_DIR"/.??* 2>/dev/null || true
+          rsync -av --exclude='.git' --exclude='node_modules' --exclude='result' . "$BUILD_DIR"/
+          cd "$BUILD_DIR"
+          
+          # Build and install from consistent location
           echo "Building and updating nix profile..."
           nix build .#test-app
           nix profile remove test-app 2>/dev/null || true
           nix profile install .#test-app
           
-          echo "Restarting service using polkit (no sudo needed)..."
+          # Restart using polkit (already working)
+          echo "Restarting service using polkit..."
           systemctl restart test-app
           
           echo "Checking service status..."
