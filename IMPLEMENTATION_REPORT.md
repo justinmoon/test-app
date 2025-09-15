@@ -1,7 +1,8 @@
 # Implementation Report: NixOS GitHub Runner Permissions Test App
 
 **Date:** September 15, 2025  
-**Status:** Partially Complete - Polkit rules not working yet
+**Last Updated:** September 15, 2025 (Session 2)
+**Status:** Solution Identified - Sudo approach confirmed, awaiting deployment
 
 ## What Was Completed
 
@@ -143,11 +144,100 @@ systemctl status github-runner-test-app-runner
 - `/Users/justin/configs/hetzner/github-runner-test-app.nix`
 - `/Users/justin/configs/hetzner/configuration.nix` (modified)
 
+## Session 2 Learnings (September 15, 2025)
+
+### Key Discoveries
+
+1. **Polkit Won't Work for Our Use Case**
+   - Polkit is designed for desktop environments with authentication agents
+   - On headless NixOS servers, there's no polkit authentication agent running
+   - The `NoNewPrivileges = true` setting conflicts with polkit's privilege escalation model
+   - Even with `security.polkit.enable = true`, rules don't get applied without an agent
+
+2. **Restart Triggers Don't Work from CI**
+   - `systemd.services.<name>.restartTriggers` only work during `nixos-rebuild switch`
+   - GitHub Actions can't run `nixos-rebuild switch` (requires root on the host)
+   - This approach would be perfect for local deployments but not CI/CD
+
+3. **Sudo with NOPASSWD is the Correct Solution**
+   - Already working successfully for the slipbox service
+   - Compatible with `NoNewPrivileges = true` because sudo runs as a separate privileged process
+   - Requires adding sudo package to runner's `extraPackages`
+   - Must use full systemd paths in sudo rules: `${pkgs.systemd}/bin/systemctl`
+
+4. **GitHub Runner Package Requirements**
+   ```nix
+   extraPackages = with pkgs; [
+     git
+     curl
+     sudo        # Critical: Not available by default in runner
+     systemd     # For systemctl access
+   ];
+   ```
+
+5. **CI Workflow Patterns**
+   - Always check if sudo exists before using it: `command -v sudo &> /dev/null`
+   - Provide fallback paths for systemctl: `/run/current-system/sw/bin/systemctl`
+   - Use `|| true` on status checks to prevent CI failure on non-critical commands
+
+### What Actually Works
+
+The working solution requires:
+
+1. **NixOS Configuration** (`github-runner-test-app.nix`):
+   ```nix
+   security.sudo.extraRules = [{
+     users = [ "justin" ];
+     commands = [
+       { command = "${pkgs.systemd}/bin/systemctl restart test-app";
+         options = [ "NOPASSWD" "SETENV" ]; }
+     ];
+   }];
+   ```
+
+2. **Runner must include sudo/systemd packages**
+3. **CI workflow uses sudo**: `sudo systemctl restart test-app`
+
+### Failed Approaches Summary
+
+| Approach | Why It Failed | Learning |
+|----------|--------------|----------|
+| Polkit rules | No authentication agent on headless server | Polkit is for desktop environments |
+| Restart triggers | Requires `nixos-rebuild switch` | Good for local, not for CI |
+| Direct systemctl | Access denied without privileges | System services need elevated permissions |
+| User systemd services | Would work but changes architecture | Viable alternative but more complex |
+
+### Current Blockers
+
+1. **NixOS Config Not Deployed**: The sudo rules and runner config need to be deployed to server
+2. **Runner Token Missing**: GitHub runner needs registration token from repo settings
+3. **Runner Not Started**: Service waiting for token file at `/var/lib/github-runner-test-app-token`
+
+### Next Immediate Steps
+
+1. Deploy NixOS configuration:
+   ```bash
+   cd ~/configs
+   git add hetzner/test-app.nix hetzner/github-runner-test-app.nix
+   git commit -m "Add test-app with sudo rules"
+   git push && just hetzner
+   ```
+
+2. Set up runner token:
+   ```bash
+   gh api repos/justinmoon/test-app/actions/runners/registration-token -q .token
+   ssh justin@135.181.179.143 "sudo bash -c 'echo TOKEN > /var/lib/github-runner-test-app-token'"
+   ssh justin@135.181.179.143 "sudo systemctl restart github-runner-test-app-runner"
+   ```
+
+3. Merge PR and test
+
 ## Conclusion
 
-The test app infrastructure is **80% complete**. The main blocker is that polkit rules aren't being applied correctly in NixOS. This is the critical piece for solving the "NoNewPrivileges" issue with GitHub runners.
+The test app infrastructure is **90% complete**. We've identified that sudo with NOPASSWD is the correct solution for GitHub Actions on NixOS with systemd services. This matches the working slipbox configuration and is compatible with security hardening settings like `NoNewPrivileges = true`.
 
-The fallback plan is to use one of the alternative approaches (systemd restart triggers, path units, or user services) if polkit cannot be made to work.
+The polkit approach, while initially promising, is not suitable for headless CI/CD environments. The sudo approach is simpler, more reliable, and already proven in production.
 
 ---
-*Report generated: September 15, 2025*
+*Report generated: September 15, 2025*  
+*Last updated: September 15, 2025 (Session 2)*
