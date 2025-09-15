@@ -238,6 +238,96 @@ The test app infrastructure is **90% complete**. We've identified that sudo with
 
 The polkit approach, while initially promising, is not suitable for headless CI/CD environments. The sudo approach is simpler, more reliable, and already proven in production.
 
+## Session 3: Directory Permissions Deep Dive (September 15, 2025)
+
+### The Real Problem Discovered
+
+**CRITICAL FINDING**: The `/build` directory issue affects BOTH slipbox and test-app. Even slipbox with `ProtectSystem=false` and `ReadWritePaths=["/build"]` cannot write to `/build`. This entire test-app project is a minimal reproduction to solve the slipbox CI problem.
+
+### Investigation Results
+
+1. **Directory Permissions Look Correct**:
+   - `/build` exists and is owned by root:root
+   - `/build/test-app` and `/build/slipbox` owned by justin:users
+   - Direct SSH as justin CAN write to these directories
+   - But GitHub runners get "Read-only file system" errors
+
+2. **Systemd Settings Comparison**:
+   ```
+   test-app-runner:
+   - ProtectSystem=strict
+   - No ReadWritePaths configured
+   - StateDirectory=/var/lib/github-runner/test-app-runner
+   - RuntimeDirectory=/run/github-runner/test-app-runner
+   
+   slipbox-runner (hetzner-runner):
+   - ProtectSystem=false  
+   - ReadWritePaths=["/build"]
+   - STILL CANNOT WRITE TO /BUILD
+   ```
+
+3. **Mount Namespace Isolation**:
+   - GitHub runners operate in a restricted mount namespace
+   - This makes `/build` appear read-only regardless of:
+     - File permissions
+     - systemd ProtectSystem settings
+     - ReadWritePaths configuration
+   - This is a GitHub runner security feature, not a systemd issue
+
+### Writable Directories for GitHub Runners
+
+Testing confirmed runners CAN write to:
+1. **StateDirectory**: `/var/lib/github-runner/<runner-name>/`
+   - Persistent across reboots
+   - Automatically writable with ProtectSystem=strict
+   - Perfect for consistent build directory
+   
+2. **RuntimeDirectory**: `/run/github-runner/<runner-name>/`
+   - Writable but cleared on reboot
+   - Lives in tmpfs (RAM)
+   
+3. **Working directory**: `/run/github-runner/<runner-name>/<repo>/<repo>`
+   - Changes between runs
+   - Not suitable for consistent paths
+
+### Why Nix Profile Updates Were Failing
+
+1. **Inconsistent paths**: Each CI run used different directory
+2. **Profile couldn't recognize package**: Path changes meant nix saw it as different package
+3. **No actual upgrade happened**: Just installed alongside, wasting space
+
+### The Solution: StateDirectory
+
+Use `/var/lib/github-runner/<runner-name>/builds` for consistent builds:
+- Already writable (no config changes needed)
+- Persistent location
+- Consistent path for nix profile
+- Works within GitHub runner security model
+
+### Failed Approaches Summary
+
+| Approach | Why It Failed | Key Learning |
+|----------|--------------|--------------|
+| Write to `/build` | Mount namespace makes it read-only | GitHub runner security feature |
+| `ReadWritePaths=["/build"]` | Doesn't affect mount namespace | ReadWritePaths only works within namespace |
+| `ProtectSystem=false` | Still restricted by mount namespace | Runner has additional isolation |
+| Restart triggers | Requires nixos-rebuild | Can't run nixos-rebuild from CI |
+| Working directory builds | Path changes each run | Nix profile needs consistent paths |
+
+### Critical Insights
+
+1. **This is NOT a systemd problem** - It's GitHub runner mount namespace isolation
+2. **StateDirectory is the way** - It's designed for exactly this use case
+3. **Stop fighting the security model** - Work within the constraints
+4. **Simpler than expected** - No NixOS config changes needed
+
+### Next Steps
+
+1. Update CI to use StateDirectory for builds
+2. Test full deployment pipeline
+3. Apply same solution to slipbox
+4. Document solution for future projects
+
 ---
 *Report generated: September 15, 2025*  
-*Last updated: September 15, 2025 (Session 2)*
+*Last updated: September 15, 2025 (Session 3)*
