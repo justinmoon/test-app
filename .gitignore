@@ -3,4 +3,4 @@ dist/
 result
 result-*
 .DS_Store
-*.log
+*.logbun2nix/
