@@ -1,0 +1,101 @@
+name: Build Directory Experiment
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_location:
+        description: 'Build directory to test'
+        required: true
+        default: '/var/lib/github-runner/test-app-runner/permanent-build'
+        type: choice
+        options:
+          - '/var/lib/github-runner/test-app-runner/permanent-build'
+          - '/run/github-runner/test-app-runner/build'
+          - '/tmp/test-app-permanent'
+          - 'custom'
+      custom_path:
+        description: 'Custom path (if selected)'
+        required: false
+        default: ''
+
+jobs:
+  test-build-dir:
+    runs-on: self-hosted
+    
+    steps:
+      - name: Setup build directory
+        run: |
+          if [ "${{ inputs.build_location }}" = "custom" ]; then
+            BUILD_DIR="${{ inputs.custom_path }}"
+          else
+            BUILD_DIR="${{ inputs.build_location }}"
+          fi
+          
+          echo "Testing build directory: $BUILD_DIR"
+          echo "BUILD_DIR=$BUILD_DIR" >> $GITHUB_ENV
+          
+          # Test write permissions
+          echo "=== Testing write permissions ==="
+          mkdir -p "$BUILD_DIR" && echo "✓ Can create directory" || echo "✗ Cannot create directory"
+          touch "$BUILD_DIR/test-write" && echo "✓ Can write files" || echo "✗ Cannot write files"
+          rm -f "$BUILD_DIR/test-write"
+          
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Test consistent build
+        run: |
+          echo "=== Using build directory: $BUILD_DIR ==="
+          
+          # Clean and sync to build directory
+          rm -rf "$BUILD_DIR"/*
+          rm -rf "$BUILD_DIR"/.??* 2>/dev/null || true
+          rsync -av --exclude='.git' --exclude='node_modules' --exclude='result' . "$BUILD_DIR"/
+          cd "$BUILD_DIR"
+          
+          # Show where we are
+          echo "=== Current location ==="
+          pwd
+          ls -la
+          
+          # First build
+          echo "=== First build (simulating initial deployment) ==="
+          export GIT_COMMIT="first-$(git rev-parse --short HEAD)"
+          nix build .#test-app --print-out-paths
+          FIRST_PATH=$(readlink -f result)
+          echo "First build path: $FIRST_PATH"
+          
+          # Install to profile
+          echo "=== Installing to profile ==="
+          nix profile remove test-app 2>/dev/null || true
+          nix profile install .#test-app
+          
+          echo "=== Profile after first install ==="
+          nix profile list | grep test-app || echo "Not found in profile"
+          
+          # Make a small change to trigger rebuild
+          echo "=== Making a change to force rebuild ==="
+          sed -i 's/🎯/🔥/' src/index.ts
+          
+          # Second build (simulating an update)
+          echo "=== Second build (simulating update) ==="
+          export GIT_COMMIT="second-$(git rev-parse --short HEAD)"
+          nix build .#test-app --print-out-paths
+          SECOND_PATH=$(readlink -f result)
+          echo "Second build path: $SECOND_PATH"
+          
+          # Try to upgrade
+          echo "=== Attempting upgrade ==="
+          nix profile upgrade test-app && echo "✓ Upgrade successful!" || {
+            echo "✗ Upgrade failed, trying remove/install..."
+            nix profile remove test-app
+            nix profile install .#test-app
+          }
+          
+          echo "=== Profile after upgrade attempt ==="
+          nix profile list | grep test-app || echo "Not found in profile"
+          
+          echo "=== Summary ==="
+          echo "Build directory: $BUILD_DIR"
+          echo "Can write: $(touch $BUILD_DIR/test 2>/dev/null && echo yes || echo no)"
+          echo "Profile upgrade: $(nix profile list | grep -q test-app && echo successful || echo failed)"
