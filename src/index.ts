@@ -44,10 +44,10 @@ const server = Bun.serve({
         </style>
       </head>
       <body>
-        <div class="emoji">🎯</div>
+        <div class="emoji">🚀</div>
         <div class="info">
           <p>Test App Running on Port 3001</p>
-          <p>StateDirectory Build Works!</p>
+          <p>Pure Builds + StateDirectory = ❤️</p>
           <div class="version">
             Version: ${VERSION}<br>
             Built: ${BUILD_TIME}
