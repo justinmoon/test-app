@@ -51,6 +51,8 @@ jobs:
           
           # Debug: Check current profile before changes
           echo "=== Current nix profile before update ==="
+          echo "User: $(whoami)"
+          echo "Profile path: $HOME/.nix-profile"
           nix profile list | grep test-app || echo "No test-app in profile"
           
           # Build the package
