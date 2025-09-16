@@ -102,12 +102,18 @@ jobs:
           fi
           
           echo "✅ test-app installed in runner's profile"
+          echo "Binary location: $RUNNER_PROFILE/bin/test-app"
           
-          # Create/update symlink where systemd expects it
+          # Create symlink in a place we can write to
           echo "Creating symlink for systemd service..."
-          sudo mkdir -p /home/justin/.nix-profile/bin
-          sudo ln -sf "$RUNNER_PROFILE/bin/test-app" "/home/justin/.nix-profile/bin/test-app"
-          echo "Symlink created: /home/justin/.nix-profile/bin/test-app -> $RUNNER_PROFILE/bin/test-app"
+          SYMLINK_DIR="/var/lib/github-runner/test-app-runner/bin"
+          mkdir -p "$SYMLINK_DIR"
+          ln -sf "$RUNNER_PROFILE/bin/test-app" "$SYMLINK_DIR/test-app"
+          echo "Symlink created: $SYMLINK_DIR/test-app -> $RUNNER_PROFILE/bin/test-app"
+          
+          # The systemd service needs to be updated to use this path
+          echo "NOTE: systemd service still expects /home/justin/.nix-profile/bin/test-app"
+          echo "You need to update test-app.nix to use $SYMLINK_DIR/test-app"
           
           echo "✅ Profile successfully updated!"
           
