@@ -1,5 +1,5 @@
 {
-  description = "Test app for debugging NixOS GitHub runner permissions";
+  description = "Test app with deterministic dependency management";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -10,62 +10,100 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+        
+        # Fixed-output derivation for dependencies
+        # This ensures deterministic, reproducible builds
+        bunDeps = pkgs.stdenv.mkDerivation {
+          pname = "test-app-deps";
+          version = "1.0.0";
+          
+          # Only files that determine dependencies
+          src = pkgs.runCommand "dep-src" {} ''
+            mkdir -p $out
+            cp ${./package.json} $out/package.json
+            cp ${./bun.lock} $out/bun.lock
+          '';
+          
+          nativeBuildInputs = [ pkgs.bun pkgs.cacert ];
+          
+          buildPhase = ''
+            cp $src/* .
+            
+            # Set up environment for bun
+            export HOME=$TMPDIR
+            
+            # Install with frozen lockfile - deterministic!
+            bun install --frozen-lockfile --no-progress --no-summary
+            
+            # Remove cache to reduce output size
+            rm -rf $HOME/.bun
+          '';
+          
+          installPhase = ''
+            mkdir -p $out
+            cp -r node_modules $out/
+            # Keep the lock file for reference
+            cp bun.lock $out/
+          '';
+          
+          # Fixed-output derivation settings
+          outputHashMode = "recursive";
+          outputHashAlgo = "sha256";
+          # This hash must be updated when dependencies change
+          # To update: set to lib.fakeHash, build, copy hash from error
+          outputHash = "sha256-BT9Ab+cjtfqxT4ETMGdd87J/me30DHlYlTOHsfVoTO4=";
+        };
+        
       in
       {
         packages = {
           default = self.packages.${system}.test-app;
           
-          # Main package - assumes node_modules exists in build directory
+          # Expose deps package for manual building/testing
+          deps = bunDeps;
+          
+          # Main package - pure build using FOD dependencies
           test-app = pkgs.stdenv.mkDerivation {
             pname = "test-app";
             version = "1.0.0";
             
             src = ./.;
             
-            nativeBuildInputs = with pkgs; [
-              bun
-            ];
+            nativeBuildInputs = [ pkgs.bun ];
             
             buildPhase = ''
-              # Create directory structure
+              # Copy source files
               mkdir -p src
-              
-              # Copy source files (excluding node_modules)
+              cp -r $src/src/* src/
               cp $src/package.json .
               cp $src/bun.lock .
-              cp -r $src/src/* src/
               
-              # Check if node_modules exists (it should be created by CI before nix build)
-              if [ -d "node_modules" ]; then
-                echo "Found node_modules in working directory"
-              elif [ -d "$src/node_modules" ]; then
-                echo "Using node_modules from source"
-                cp -r $src/node_modules .
-              else
-                echo "WARNING: node_modules not found, build may fail"
-                echo "In CI, run 'bun install' before 'nix build'"
-              fi
+              # Link pre-fetched dependencies (deterministic!)
+              ln -s ${bunDeps}/node_modules node_modules
               
-              # Embed version in the source
+              # Verify dependencies are available
+              test -d node_modules/uuid || (echo "Dependencies missing!" && exit 1)
+              
+              # Embed version
               if [ -n "$GIT_COMMIT" ]; then
                 echo "Embedding version: $GIT_COMMIT"
                 sed -i "s/VERSION = process.env.GIT_COMMIT || \"dev\"/VERSION = \"$GIT_COMMIT\"/" src/index.ts
               fi
+              
+              # For more complex builds (like slipbox), build steps here:
+              # bun run build:client  # Would work with linked node_modules
             '';
             
             installPhase = ''
-              mkdir -p $out/app
-              mkdir -p $out/bin
+              mkdir -p $out/app $out/bin
               
-              # Copy everything needed to run
+              # Copy application files
               cp -r src $out/app/
-              if [ -d "node_modules" ]; then
-                cp -r node_modules $out/app/
-              fi
+              cp -r ${bunDeps}/node_modules $out/app/node_modules
               cp package.json $out/app/
               cp bun.lock $out/app/
               
-              # Create wrapper script
+              # Create executable wrapper
               cat > $out/bin/test-app <<EOF
               #!/usr/bin/env bash
               cd $out/app
@@ -75,7 +113,7 @@
             '';
             
             meta = with pkgs.lib; {
-              description = "Test app for debugging GitHub runner permissions";
+              description = "Test app with deterministic dependencies";
               license = licenses.mit;
               platforms = platforms.all;
             };
@@ -94,8 +132,11 @@
           
           shellHook = ''
             echo "Test app development environment"
-            echo "Run 'bun install' to install dependencies"
-            echo "Run 'bun run dev' to start the development server"
+            echo "Commands:"
+            echo "  bun install - Install dependencies locally"
+            echo "  bun run dev - Start dev server"
+            echo "  nix build .#deps - Build dependency FOD"
+            echo "  nix build .#test-app - Build full app"
           '';
         };
       });
