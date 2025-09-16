@@ -54,15 +54,15 @@ jobs:
           echo "User: $(whoami)"
           echo "HOME: $HOME"
           
-          # CRITICAL: Runner runs as justin but with different HOME
-          # We need to use justin's actual profile location
-          export HOME=/home/justin
-          echo "Using justin's HOME: $HOME"
+          # CRITICAL: Use explicit profile path for justin
+          # Runner runs as justin but with different HOME
+          JUSTIN_PROFILE="/home/justin/.local/state/nix/profiles/profile"
+          echo "Using explicit profile: $JUSTIN_PROFILE"
           
-          # Check if profile is broken (owned by root)
-          if [ -L "$HOME/.nix-profile" ] && [ "$(stat -c %U $HOME/.nix-profile)" = "root" ]; then
+          # Check if justin's main profile symlink is broken
+          if [ -L "/home/justin/.nix-profile" ] && [ "$(stat -c %U /home/justin/.nix-profile 2>/dev/null)" = "root" ]; then
             echo "⚠️ Profile symlink owned by root, removing..."
-            sudo rm "$HOME/.nix-profile"
+            sudo rm "/home/justin/.nix-profile"
           fi
           
           # Build the package
@@ -76,36 +76,36 @@ jobs:
           
           # Check current profile
           echo "Current profile contents:"
-          nix profile list | grep test-app || echo "No test-app in profile"
+          nix profile list --profile "$JUSTIN_PROFILE" | grep test-app || echo "No test-app in profile"
           
-          # Update justin's main profile
-          if nix profile list 2>/dev/null | grep -E 'test-app' > /dev/null; then
+          # Update justin's main profile using explicit path
+          if nix profile list --profile "$JUSTIN_PROFILE" 2>/dev/null | grep -E 'test-app' > /dev/null; then
             echo 'test-app found in profile, attempting upgrade...'
-            nix profile upgrade test-app || {
+            nix profile upgrade --profile "$JUSTIN_PROFILE" test-app || {
               echo '⚠️ Upgrade failed, removing and reinstalling...'
-              nix profile remove test-app
-              nix profile install .#test-app
+              nix profile remove --profile "$JUSTIN_PROFILE" test-app
+              nix profile install --profile "$JUSTIN_PROFILE" .#test-app
             }
           else
             echo 'test-app not in profile, installing fresh...'
-            nix profile install .#test-app
+            nix profile install --profile "$JUSTIN_PROFILE" .#test-app
           fi
           
           echo '=== Profile after update ==='
-          nix profile list | grep test-app || echo '❌ No test-app in profile!'
+          nix profile list --profile "$JUSTIN_PROFILE" | grep test-app || echo '❌ No test-app in profile!'
           
           # CRITICAL ASSERTION: Verify the profile actually updated
           echo "=== VERIFYING PROFILE UPDATE ==="
           
           # Check profile to ensure test-app is there
-          if ! nix profile list | grep -q test-app; then
+          if ! nix profile list --profile "$JUSTIN_PROFILE" | grep -q test-app; then
             echo "❌ CRITICAL ERROR: test-app not found in profile!"
-            nix profile list
+            nix profile list --profile "$JUSTIN_PROFILE"
             exit 1
           fi
           
           echo "✅ test-app installed in justin's profile"
-          echo "Binary location: $HOME/.nix-profile/bin/test-app"
+          echo "Binary location: /home/justin/.nix-profile/bin/test-app"
           
           echo "✅ Profile successfully updated!"
           
