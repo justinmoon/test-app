@@ -49,11 +49,15 @@ jobs:
           echo "Building and updating nix profile..."
           echo "Building version: $GIT_COMMIT"
           
+          # CRITICAL: Use justin's profile, not the runner's temporary profile
+          export NIX_PROFILE="/home/justin/.nix-profile"
+          
           # Debug: Check current profile before changes
           echo "=== Current nix profile before update ==="
           echo "User: $(whoami)"
-          echo "Profile path: $HOME/.nix-profile"
-          nix profile list | grep test-app || echo "No test-app in profile"
+          echo "HOME: $HOME"
+          echo "Using profile: $NIX_PROFILE"
+          nix profile list --profile "$NIX_PROFILE" | grep test-app || echo "No test-app in profile"
           
           # Build the package
           echo "=== Building package ==="
@@ -62,41 +66,41 @@ jobs:
           echo "Built store path: $STORE_PATH"
           
           # Try to upgrade or install
-          echo "=== Attempting profile update ==="
+          echo "=== Attempting profile update ===="
           
           # Check if test-app exists and where it's from
           # Note: grep pattern must account for ANSI color codes in nix profile output
-          if nix profile list | grep -E "test-app" > /dev/null; then
-            CURRENT_FLAKE_URL=$(nix profile list | sed 's/\x1b\[[0-9;]*m//g' | grep -A3 "^Name:.*test-app" | grep "Original flake URL:" | sed 's/Original flake URL: *//' | xargs)
+          if nix profile list --profile "$NIX_PROFILE" | grep -E "test-app" > /dev/null; then
+            CURRENT_FLAKE_URL=$(nix profile list --profile "$NIX_PROFILE" | sed 's/\x1b\[[0-9;]*m//g' | grep -A3 "^Name:.*test-app" | grep "Original flake URL:" | sed 's/Original flake URL: *//' | xargs)
             echo "Current flake URL: '$CURRENT_FLAKE_URL'"
             echo "Expected flake URL: 'path:$BUILD_DIR'"
             
             if [[ "$CURRENT_FLAKE_URL" != "path:$BUILD_DIR" ]]; then
               echo "⚠️ Profile points to different location ($CURRENT_FLAKE_URL), removing and reinstalling from $BUILD_DIR"
-              nix profile remove test-app || true
-              nix profile install .#test-app
+              nix profile remove --profile "$NIX_PROFILE" test-app || true
+              nix profile install --profile "$NIX_PROFILE" .#test-app
             else
               echo "test-app exists in profile from correct location, attempting upgrade..."
-              nix profile upgrade test-app || {
+              nix profile upgrade --profile "$NIX_PROFILE" test-app || {
                 echo "⚠️ Upgrade failed, removing and reinstalling..."
-                nix profile remove test-app
-                nix profile install .#test-app
+                nix profile remove --profile "$NIX_PROFILE" test-app
+                nix profile install --profile "$NIX_PROFILE" .#test-app
               }
             fi
           else
             echo "test-app not in profile, installing fresh..."
-            nix profile install .#test-app
+            nix profile install --profile "$NIX_PROFILE" .#test-app
           fi
           
           # Debug: Check profile after changes
           echo "=== Nix profile after update ==="
-          nix profile list | grep -A3 "^Name:.*test-app$" || echo "❌ No test-app in profile"
+          nix profile list --profile "$NIX_PROFILE" | grep -A3 "^Name:.*test-app$" || echo "❌ No test-app in profile"
           
           # CRITICAL ASSERTION: Verify the profile actually updated
           echo "=== VERIFYING PROFILE UPDATE ==="
           # Strip ANSI color codes before parsing
-          FINAL_FLAKE_URL=$(nix profile list | sed 's/\x1b\[[0-9;]*m//g' | grep -A3 "^Name:.*test-app" | grep "Original flake URL:" | sed 's/Original flake URL: *//' | xargs)
-          FINAL_STORE_PATH=$(nix profile list | sed 's/\x1b\[[0-9;]*m//g' | grep -A4 "^Name:.*test-app" | grep "Store paths:" | sed 's/Store paths: *//' | xargs)
+          FINAL_FLAKE_URL=$(nix profile list --profile "$NIX_PROFILE" | sed 's/\x1b\[[0-9;]*m//g' | grep -A3 "^Name:.*test-app" | grep "Original flake URL:" | sed 's/Original flake URL: *//' | xargs)
+          FINAL_STORE_PATH=$(nix profile list --profile "$NIX_PROFILE" | sed 's/\x1b\[[0-9;]*m//g' | grep -A4 "^Name:.*test-app" | grep "Store paths:" | sed 's/Store paths: *//' | xargs)
           
           echo "Final flake URL: '$FINAL_FLAKE_URL'"
           echo "Final store path: '$FINAL_STORE_PATH'"
