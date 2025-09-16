@@ -55,8 +55,8 @@ jobs:
           echo "HOME: $HOME"
           echo "Runner's profile would be: $HOME/.nix-profile"
           
-          # Check justin's actual profile
-          sudo -Hiu justin bash -lc 'nix profile list | grep test-app || echo "No test-app in justin profile"'
+          # Check justin's actual profile (we ARE justin, just wrong HOME)
+          HOME=/home/justin nix profile list | grep test-app || echo "No test-app in justin profile"
           
           # Build the package
           echo "=== Building package ==="
@@ -67,39 +67,38 @@ jobs:
           # Try to upgrade or install
           echo "=== Attempting profile update ===="
           
-          # Update justin's profile with proper environment
-          sudo -Hiu justin bash -lc "
-            cd '$BUILD_DIR'
-            
-            # Check if test-app exists and where it's from
-            if nix profile list | grep -E 'test-app' > /dev/null; then
-              echo 'test-app found in profile, attempting upgrade...'
-              nix profile upgrade test-app || {
-                echo '⚠️ Upgrade failed, removing and reinstalling...'
-                nix profile remove test-app
-                nix profile install path:'$BUILD_DIR'#test-app
-              }
-            else
-              echo 'test-app not in profile, installing fresh...'
-              nix profile install path:'$BUILD_DIR'#test-app
-            fi
-            
-            echo '=== Profile after update ==='
-            nix profile list | grep test-app || echo '❌ No test-app in profile!'
-          "
+          # Update justin's profile (we ARE justin, just with wrong HOME)
+          # Set HOME to justin's real home so nix finds the right profile
+          export HOME=/home/justin
+          
+          # Check if test-app exists and where it's from
+          if nix profile list | grep -E 'test-app' > /dev/null; then
+            echo 'test-app found in profile, attempting upgrade...'
+            nix profile upgrade test-app || {
+              echo '⚠️ Upgrade failed, removing and reinstalling...'
+              nix profile remove test-app
+              nix profile install path:$BUILD_DIR#test-app
+            }
+          else
+            echo 'test-app not in profile, installing fresh...'
+            nix profile install path:$BUILD_DIR#test-app
+          fi
+          
+          echo '=== Profile after update ==='
+          nix profile list | grep test-app || echo '❌ No test-app in profile!'
           
           # CRITICAL ASSERTION: Verify the profile actually updated
           echo "=== VERIFYING PROFILE UPDATE ==="
           
-          # Check justin's profile to ensure test-app is there
-          if ! sudo -Hiu justin bash -lc 'nix profile list | grep -q test-app'; then
+          # Check justin's profile to ensure test-app is there (with correct HOME)
+          if ! HOME=/home/justin nix profile list | grep -q test-app; then
             echo "❌ CRITICAL ERROR: test-app not found in justin's profile!"
-            sudo -Hiu justin bash -lc 'nix profile list'
+            HOME=/home/justin nix profile list
             exit 1
           fi
           
           # Verify the binary exists where systemd expects it
-          if ! sudo -Hiu justin bash -lc 'test -x /home/justin/.nix-profile/bin/test-app'; then
+          if ! test -x /home/justin/.nix-profile/bin/test-app; then
             echo "❌ CRITICAL ERROR: test-app binary not found at /home/justin/.nix-profile/bin/test-app!"
             exit 1
           fi
