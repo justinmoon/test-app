@@ -1,6 +1,8 @@
 node_modules/
+node_modules.tar.gz
 dist/
 result
 result-*
 .DS_Store
-*.logbun2nix/
+*.log
+bun2nix/
