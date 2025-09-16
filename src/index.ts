@@ -1,5 +1,8 @@
+import { v4 as uuidv4 } from 'uuid';
+
 const VERSION = process.env.GIT_COMMIT || "dev";
 const BUILD_TIME = new Date().toISOString();
+const SESSION_ID = uuidv4();
 
 const server = Bun.serve({
   port: 3001,
@@ -50,7 +53,8 @@ const server = Bun.serve({
           <p>Pure Builds + StateDirectory = ❤️</p>
           <div class="version">
             Version: ${VERSION}<br>
-            Built: ${BUILD_TIME}
+            Built: ${BUILD_TIME}<br>
+            Session: ${SESSION_ID.split('-')[0]}
           </div>
         </div>
       </body>
