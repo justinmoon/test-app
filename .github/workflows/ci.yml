@@ -45,6 +45,12 @@ jobs:
           # Touch flake.nix to bust nix cache for upgrades
           touch flake.nix
           
+          # Install dependencies (if package.json exists)
+          if [ -f "package.json" ]; then
+            echo "Installing dependencies with bun..."
+            bun install --frozen-lockfile
+          fi
+          
           # Build and install from consistent location
           echo "Building and updating nix profile..."
           echo "Building version: $GIT_COMMIT"

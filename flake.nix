@@ -15,7 +15,7 @@
         packages = {
           default = self.packages.${system}.test-app;
           
-          # Main package - bundles everything into a single executable
+          # Main package - assumes node_modules exists in build directory
           test-app = pkgs.stdenv.mkDerivation {
             pname = "test-app";
             version = "1.0.0";
@@ -26,66 +26,27 @@
               bun
             ];
             
-            # Disable sandbox for this specific derivation to allow network access
-            # This is needed for bun install to work
-            __noChroot = true;
-            
             buildPhase = ''
-              # Copy source files
-              cp -r $src/* .
-              chmod -R u+w .
+              # Create directory structure
+              mkdir -p src
               
-              # Install dependencies (requires network access)
-              export HOME=$TMPDIR
-              bun install --frozen-lockfile
+              # Copy source files (excluding node_modules)
+              cp $src/package.json .
+              cp $src/bun.lock .
+              cp -r $src/src/* src/
               
-              # Embed version in the source
-              if [ -n "$GIT_COMMIT" ]; then
-                echo "Embedding version: $GIT_COMMIT"
-                sed -i "s/VERSION = process.env.GIT_COMMIT || \"dev\"/VERSION = \"$GIT_COMMIT\"/" src/index.ts
+              # Check if node_modules exists (it should be created by CI before nix build)
+              if [ -d "node_modules" ]; then
+                echo "Found node_modules in working directory"
+              elif [ -d "$src/node_modules" ]; then
+                echo "Using node_modules from source"
+                cp -r $src/node_modules .
+              else
+                echo "WARNING: node_modules not found, build may fail"
+                echo "In CI, run 'bun install' before 'nix build'"
               fi
               
-              # Bundle the application with all dependencies into a single executable
-              echo "Building standalone executable..."
-              bun build src/index.ts --compile --outfile test-app-bundled --target=bun-linux-x64
-            '';
-            
-            installPhase = ''
-              mkdir -p $out/bin
-              cp test-app-bundled $out/bin/test-app
-              chmod +x $out/bin/test-app
-            '';
-            
-            meta = with pkgs.lib; {
-              description = "Test app for debugging GitHub runner permissions";
-              license = licenses.mit;
-              platforms = platforms.linux;
-            };
-          };
-          
-          # Alternative: runtime version (requires bun to run)
-          test-app-runtime = pkgs.stdenv.mkDerivation {
-            pname = "test-app-runtime";
-            version = "1.0.0";
-            
-            src = ./.;
-            
-            nativeBuildInputs = with pkgs; [
-              bun
-            ];
-            
-            __noChroot = true;
-            
-            buildPhase = ''
-              # Copy source files
-              cp -r $src/* .
-              chmod -R u+w .
-              
-              # Install dependencies
-              export HOME=$TMPDIR
-              bun install --frozen-lockfile
-              
-              # Embed version
+              # Embed version in the source
               if [ -n "$GIT_COMMIT" ]; then
                 echo "Embedding version: $GIT_COMMIT"
                 sed -i "s/VERSION = process.env.GIT_COMMIT || \"dev\"/VERSION = \"$GIT_COMMIT\"/" src/index.ts
@@ -98,7 +59,9 @@
               
               # Copy everything needed to run
               cp -r src $out/app/
-              cp -r node_modules $out/app/
+              if [ -d "node_modules" ]; then
+                cp -r node_modules $out/app/
+              fi
               cp package.json $out/app/
               cp bun.lock $out/app/
               
@@ -112,7 +75,7 @@
             '';
             
             meta = with pkgs.lib; {
-              description = "Test app runtime version";
+              description = "Test app for debugging GitHub runner permissions";
               license = licenses.mit;
               platforms = platforms.all;
             };
@@ -131,6 +94,7 @@
           
           shellHook = ''
             echo "Test app development environment"
+            echo "Run 'bun install' to install dependencies"
             echo "Run 'bun run dev' to start the development server"
           '';
         };
