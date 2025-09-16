@@ -479,6 +479,62 @@ If issues occur:
 - [ ] Build times are reasonable (< 2 min)
 - [ ] Tests can run in CI (if re-enabled)
 
+## Debugging Strategies
+
+### Test Directly on Server First
+```bash
+# SSH to server and test WITHOUT CI
+ssh justin@135.181.179.143
+cd /var/lib/github-runner/slipbox-runner/builds
+rsync -av --exclude='.git' --exclude='node_modules' justin@local:/code/slipbox/ .
+nix build .#slipbox
+nix profile install --profile /var/lib/github-runner/slipbox-runner/profile .#slipbox
+
+# Only after this works, test via CI
+```
+
+### Debug FOD Hash Issues
+```bash
+# When hash mismatches occur
+nix build .#deps 2>&1 | grep "got:" | cut -d: -f2 | xargs
+# Copy hash immediately to flake.nix
+```
+
+### Test Without Systemd
+```bash
+# Run directly to see errors
+/var/lib/github-runner/slipbox-runner/bin/slipbox
+# Check it starts before dealing with systemd
+```
+
+### Profile Debugging
+```bash
+# Check profile ownership issues
+ls -la /home/justin/.local/state/nix/profiles/
+ls -la /var/lib/github-runner/slipbox-runner/
+stat -c %U:%G /path/to/manifest.json
+```
+
+### CI Debugging
+```bash
+# Watch logs in real-time
+gh run watch <run-id>
+gh run view <run-id> --log-failed | less
+
+# Run CI steps manually on server
+ssh justin@server
+sudo -u justin bash  # Simulate runner user
+cd /var/lib/github-runner/slipbox-runner/builds
+# Paste CI commands one by one
+```
+
+### Quick Iteration
+```bash
+# Skip CI entirely during debugging
+ssh justin@server "cd /path && nix build && systemctl restart slipbox"
+# Much faster than waiting for CI
+```
+
 ## Timeline Estimate
 
 - Phase 1 (Update flake): 30 minutes
